@@ -8,9 +8,10 @@ interface PracticeKeyboardProps {
   onNextNote: () => void;
   correctNote?: string | null;
   isWaiting: boolean;
+  playbackNotes?: string[];
 }
 
-export function PracticeKeyboard({ selectedMidiInput, onNextNote, correctNote, isWaiting }: PracticeKeyboardProps) {
+export function PracticeKeyboard({ selectedMidiInput, onNextNote, correctNote, isWaiting, playbackNotes = [] }: PracticeKeyboardProps) {
   const [activeNotes, setActiveNotes] = React.useState<string[]>([]);
   const [incorrectNote, setIncorrectNote] = React.useState<string | null>(null);
   const synth = React.useRef<Tone.PolySynth | null>(null);
@@ -68,7 +69,7 @@ export function PracticeKeyboard({ selectedMidiInput, onNextNote, correctNote, i
       <PianoKeyboard
         startNote="C3"
         endNote="B5"
-        highlightedNotes={activeNotes}
+        highlightedNotes={[...activeNotes, ...playbackNotes]}
         correctNote={isWaiting ? correctNote : undefined}
         incorrectNote={isWaiting ? incorrectNote : undefined}
       />

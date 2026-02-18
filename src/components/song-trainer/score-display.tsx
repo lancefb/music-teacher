@@ -83,7 +83,7 @@ export const ScoreDisplay = forwardRef<ScoreDisplayHandle, ScoreDisplayProps>(({
             <p>{error}</p>
           </div>
         )}
-        <div ref={osmdContainerRef} style={{ display: isLoading || error ? 'none' : 'block' }} />
+        <div ref={osmdContainerRef} className="overflow-x-auto overflow-y-hidden" style={{ display: isLoading || error ? 'none' : 'block' }} />
       </CardContent>
     </Card>
   );

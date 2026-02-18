@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as Tone from 'tone';
-import { OpenSheetMusicDisplay as OSMD, Note } from 'opensheetmusicdisplay';
+import { OpenSheetMusicDisplay as OSMD, Note, type GraphicalNote } from 'opensheetmusicdisplay';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Library, Upload, Play, Square, Mic2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -30,12 +30,52 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
   const [endMeasure, setEndMeasure] = React.useState(4);
   const [totalMeasures, setTotalMeasures] = React.useState(0);
   const [waitNote, setWaitNote] = React.useState<string | null>(null);
+  const [bpm, setBpm] = React.useState(50);
+  const [playbackNotes, setPlaybackNotes] = React.useState<string[]>([]);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const scoreRef = React.useRef<ScoreDisplayHandle>(null);
   const synthRef = React.useRef<Tone.PolySynth | null>(null);
 
+  const highlightedNotesRef = React.useRef<GraphicalNote[]>([]);
+
   const { toast } = useToast();
+
+  const highlightCursorNotes = React.useCallback(() => {
+    const cursor = scoreRef.current?.cursor;
+    if (!cursor) return;
+
+    // Reset previously highlighted notes to black
+    for (const gNote of highlightedNotesRef.current) {
+      try { gNote.setColor('#000000', { applyToNoteheads: true, applyToStem: true, applyToBeams: true }); } catch {}
+    }
+    highlightedNotesRef.current = [];
+
+    // Highlight current notes in blue and update keyboard
+    const keyboardNotes: string[] = [];
+    try {
+      const gNotes = cursor.GNotesUnderCursor();
+      for (const gNote of gNotes) {
+        gNote.setColor('#3b82f6', { applyToNoteheads: true, applyToStem: true, applyToBeams: true });
+        highlightedNotesRef.current.push(gNote);
+      }
+      const notes = cursor.NotesUnderCursor();
+      for (const note of notes) {
+        if (!note.isRest()) {
+          const toneNote = osmdNoteToToneNote(note);
+          if (toneNote) keyboardNotes.push(toneNote);
+        }
+      }
+    } catch {}
+    setPlaybackNotes(keyboardNotes);
+  }, []);
+
+  const clearHighlights = React.useCallback(() => {
+    for (const gNote of highlightedNotesRef.current) {
+      try { gNote.setColor('#000000', { applyToNoteheads: true, applyToStem: true, applyToBeams: true }); } catch {}
+    }
+    highlightedNotesRef.current = [];
+  }, []);
 
   React.useEffect(() => {
     synthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
@@ -52,12 +92,14 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
     Tone.getTransport().position = 0;
     setPracticeMode('inactive');
     setWaitNote(null);
+    setPlaybackNotes([]);
+    clearHighlights();
 
     if (scoreRef.current?.cursor) {
       scoreRef.current.cursor.reset();
       scoreRef.current.cursor.hide();
     }
-  }, []);
+  }, [clearHighlights]);
 
   const handleFileChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -86,6 +128,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
     if (practiceMode === 'waitForMe' && scoreRef.current?.cursor) {
       const cursor = scoreRef.current.cursor;
       cursor.next();
+      highlightCursorNotes();
 
       if (cursor.iterator.endReached || cursor.iterator.CurrentMeasureIndex >= endMeasure) {
         stopPractice();
@@ -100,7 +143,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
         onNextNote();
       }
     }
-  }, [practiceMode, endMeasure, stopPractice, toast]);
+  }, [practiceMode, endMeasure, stopPractice, toast, highlightCursorNotes]);
 
   const startPlaybackMode = React.useCallback(async () => {
     const osmd = scoreRef.current?.osmd;
@@ -112,7 +155,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
     setPracticeMode('playback');
 
     const transport = Tone.getTransport();
-    transport.bpm.value = 46;
+    transport.bpm.value = bpm;
     transport.cancel();
 
     cursor.show();
@@ -121,18 +164,22 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
     while (cursor.iterator.CurrentMeasureIndex < startMeasure - 1 && !cursor.iterator.endReached) {
       cursor.next();
     }
+    highlightCursorNotes();
 
     const firstNoteTime = cursor.iterator.currentTimeStamp.RealValue;
     const tempIterator = cursor.iterator.clone();
+    const secPerQuarter = 60 / bpm;
 
     while (!tempIterator.endReached && tempIterator.CurrentMeasureIndex < endMeasure) {
       const voiceEntries = tempIterator.CurrentVoiceEntries;
       const timeInWholeNotes = tempIterator.currentTimeStamp.RealValue;
       const relativeTimeInQuarters = (timeInWholeNotes - firstNoteTime) * 4;
+      const timeInSeconds = relativeTimeInQuarters * secPerQuarter;
 
       transport.schedule(() => {
         cursor.next();
-      }, `${relativeTimeInQuarters}q`);
+        highlightCursorNotes();
+      }, timeInSeconds);
 
       if (voiceEntries) {
         for (const entry of voiceEntries) {
@@ -140,10 +187,10 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
             if (!note.isRest()) {
               const toneNote = osmdNoteToToneNote(note);
               if (toneNote) {
-                const durationInQuarters = note.Length.RealValue * 4;
+                const durationInSeconds = note.Length.RealValue * 4 * secPerQuarter;
                 transport.schedule(t => {
-                  synthRef.current?.triggerAttackRelease(toneNote, `${durationInQuarters}q`, t);
-                }, `${relativeTimeInQuarters}q`);
+                  synthRef.current?.triggerAttackRelease(toneNote, durationInSeconds, t);
+                }, timeInSeconds);
               }
             }
           }
@@ -156,10 +203,10 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
     transport.scheduleOnce(() => {
       stopPractice();
       toast({ title: 'Playback Finished' });
-    }, `${lastTimeInQuarters}q`);
+    }, lastTimeInQuarters * secPerQuarter);
 
     transport.start();
-  }, [startMeasure, endMeasure, stopPractice, toast]);
+  }, [startMeasure, endMeasure, stopPractice, toast, highlightCursorNotes, bpm]);
 
   const startWaitForMeMode = React.useCallback(async () => {
     const cursor = scoreRef.current?.cursor;
@@ -182,6 +229,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
       }
       const notes = cursor.NotesUnderCursor();
       if (notes.length > 0 && !notes[0].isRest()) {
+        highlightCursorNotes();
         setWaitNote(osmdNoteToToneNote(notes[0]));
       } else {
         cursor.next();
@@ -189,7 +237,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
       }
     };
     findFirstNote();
-  }, [startMeasure, endMeasure, stopPractice]);
+  }, [startMeasure, endMeasure, stopPractice, highlightCursorNotes]);
 
   return (
     <Card className="w-full">
@@ -253,6 +301,21 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">Total: {totalMeasures} measures</p>
                 </div>
                 <Separator />
+                <div className="flex items-center gap-3">
+                  <Label htmlFor="bpm">Tempo</Label>
+                  <input
+                    id="bpm"
+                    type="range"
+                    min={30}
+                    max={130}
+                    value={bpm}
+                    onChange={(e) => setBpm(parseInt(e.target.value))}
+                    disabled={practiceMode !== 'inactive'}
+                    className="w-40 accent-[hsl(var(--primary))]"
+                  />
+                  <span className="text-sm font-medium w-16">{bpm} BPM</span>
+                </div>
+                <Separator />
                 <div className="flex flex-wrap items-center gap-4">
                   <Button
                     onClick={startPlaybackMode}
@@ -260,7 +323,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
                     className="min-w-[180px]"
                   >
                     <Play className="w-4 h-4 mr-2" />
-                    Playback (46 BPM)
+                    Playback
                   </Button>
                   <Button
                     onClick={startWaitForMeMode}
@@ -278,7 +341,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-[hsl(var(--primary))] animate-pulse" />
                     <span className="font-bold text-[hsl(var(--primary))] text-sm uppercase tracking-wider">
-                      {practiceMode === 'playback' ? 'Playing: 46 BPM' : 'Waiting for note...'}
+                      {practiceMode === 'playback' ? `Playing: ${bpm} BPM` : 'Waiting for note...'}
                     </span>
                   </div>
                   <Button onClick={stopPractice} size="sm" variant="destructive">
@@ -293,6 +356,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
               onNextNote={onNextNote}
               correctNote={waitNote}
               isWaiting={practiceMode === 'waitForMe'}
+              playbackNotes={playbackNotes}
             />
           </div>
         )}

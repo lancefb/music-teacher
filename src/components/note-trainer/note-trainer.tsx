@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { WebMidi } from 'webmidi';
-import { generateNote, type GenerateNoteOutput } from '@/flows/generate-note-flow';
+import { generateNote, type GenerateNoteOutput, type ClefMode } from '@/flows/generate-note-flow';
 import { StaffDisplay } from '@/components/shared/staff-display';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -16,6 +16,7 @@ export default function NoteTrainer({ selectedMidiInput }: NoteTrainerProps) {
   const [isLoading, setIsLoading] = React.useState(true);
   const [feedback, setFeedback] = React.useState<'correct' | 'incorrect' | 'waiting' | null>('waiting');
   const [notesInCurrentClef, setNotesInCurrentClef] = React.useState(0);
+  const [clefMode, setClefMode] = React.useState<ClefMode>('auto');
   const currentMidiInput = React.useRef<any>(null);
 
   const { toast } = useToast();
@@ -41,7 +42,8 @@ export default function NoteTrainer({ selectedMidiInput }: NoteTrainerProps) {
       const newProblem = await generateNote({
           previousNote: currentProblem?.note,
           currentClef: clef,
-          notesInCurrentClef: notesCount
+          notesInCurrentClef: notesCount,
+          mode: clefMode,
       });
 
       setProblem(newProblem);
@@ -61,7 +63,7 @@ export default function NoteTrainer({ selectedMidiInput }: NoteTrainerProps) {
       });
     }
     setIsLoading(false);
-  }, [toast, notesInCurrentClef, problem?.clef]);
+  }, [toast, notesInCurrentClef, problem?.clef, clefMode]);
 
   // Initial problem load
   React.useEffect(() => {
@@ -110,6 +112,24 @@ export default function NoteTrainer({ selectedMidiInput }: NoteTrainerProps) {
     return cleanup;
   }, [selectedMidiInput, handleMidiInput]);
 
+
+  const handleClefModeChange = React.useCallback((mode: ClefMode) => {
+    setClefMode(mode);
+    setNotesInCurrentClef(0);
+    setProblem(null);
+    setIsLoading(true);
+    setFeedback('waiting');
+    // Generate a fresh note in the new mode
+    generateNote({
+      currentClef: mode === 'auto' ? 'treble' : mode,
+      notesInCurrentClef: 0,
+      mode,
+    }).then((newProblem) => {
+      setProblem(newProblem);
+      setNotesInCurrentClef(1);
+      setIsLoading(false);
+    });
+  }, []);
 
   const renderContent = () => {
     if (isLoading && !problem) {
@@ -160,6 +180,18 @@ export default function NoteTrainer({ selectedMidiInput }: NoteTrainerProps) {
           <Music className="w-6 h-6" />
           <span>Sight-Reading Trainer</span>
         </CardTitle>
+        <div className="flex gap-1">
+          {(['auto', 'treble', 'bass'] as const).map((mode) => (
+            <Button
+              key={mode}
+              size="sm"
+              variant={clefMode === mode ? 'default' : 'outline'}
+              onClick={() => handleClefModeChange(mode)}
+            >
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </Button>
+          ))}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4 text-center">
         {renderContent()}

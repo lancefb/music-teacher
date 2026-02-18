@@ -7,10 +7,13 @@ const NOTES_BY_CLEF = {
 
 const NOTES_PER_CLEF = 4;
 
+export type ClefMode = 'auto' | 'treble' | 'bass';
+
 export interface GenerateNoteInput {
   previousNote?: string;
   currentClef: Clef;
   notesInCurrentClef: number;
+  mode?: ClefMode;
 }
 
 export interface GenerateNoteOutput {
@@ -19,10 +22,12 @@ export interface GenerateNoteOutput {
 }
 
 export async function generateNote(input: GenerateNoteInput): Promise<GenerateNoteOutput> {
-  let { currentClef, notesInCurrentClef, previousNote } = input;
+  let { currentClef, notesInCurrentClef, previousNote, mode = 'auto' } = input;
 
-  // Switch clef after NOTES_PER_CLEF correct answers
-  if (notesInCurrentClef >= NOTES_PER_CLEF) {
+  if (mode === 'treble' || mode === 'bass') {
+    currentClef = mode;
+  } else if (notesInCurrentClef >= NOTES_PER_CLEF) {
+    // Auto mode: switch clef after NOTES_PER_CLEF correct answers
     currentClef = currentClef === 'treble' ? 'bass' : 'treble';
   }
 
