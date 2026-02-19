@@ -11,6 +11,7 @@ interface ScoreDisplayProps {
 export interface ScoreDisplayHandle {
   osmd: OpenSheetMusicDisplay | null;
   cursor: Cursor | null;
+  container: HTMLDivElement | null;
 }
 
 export const ScoreDisplay = forwardRef<ScoreDisplayHandle, ScoreDisplayProps>(({ xml, onScoreReady }, ref) => {
@@ -22,6 +23,7 @@ export const ScoreDisplay = forwardRef<ScoreDisplayHandle, ScoreDisplayProps>(({
   useImperativeHandle(ref, () => ({
     osmd: osmdRef.current,
     cursor: osmdRef.current?.cursor ?? null,
+    container: osmdContainerRef.current,
   }));
 
   useEffect(() => {
@@ -41,7 +43,7 @@ export const ScoreDisplay = forwardRef<ScoreDisplayHandle, ScoreDisplayProps>(({
       autoResize: true,
       backend: 'svg',
       drawTitle: false,
-      followCursor: true,
+      followCursor: false,
       renderSingleHorizontalStaffline: true,
       drawPartNames: false,
       drawingParameters: 'compacttight',

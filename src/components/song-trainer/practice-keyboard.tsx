@@ -22,12 +22,14 @@ export function PracticeKeyboard({ selectedMidiInput, onNextNote, correctNote, i
   }, []);
 
   const handleNoteOn = React.useCallback((e: any) => {
-    const noteName = e.note.name + e.note.octave;
+    const noteName = e.note.identifier;
     synth.current?.triggerAttack(noteName, Tone.now());
     setActiveNotes(prev => Array.from(new Set([...prev, noteName])));
 
     if (isWaiting && correctNote) {
-      if (noteName === correctNote) {
+      const playedMidi = Tone.Frequency(noteName).toMidi();
+      const correctMidi = Tone.Frequency(correctNote).toMidi();
+      if (playedMidi === correctMidi) {
         setIncorrectNote(null);
         onNextNote();
       } else {
@@ -38,7 +40,7 @@ export function PracticeKeyboard({ selectedMidiInput, onNextNote, correctNote, i
   }, [isWaiting, correctNote, onNextNote]);
 
   const handleNoteOff = React.useCallback((e: any) => {
-    const noteName = e.note.name + e.note.octave;
+    const noteName = e.note.identifier;
     synth.current?.triggerRelease(noteName, Tone.now());
     setActiveNotes(prev => prev.filter(n => n !== noteName));
   }, []);

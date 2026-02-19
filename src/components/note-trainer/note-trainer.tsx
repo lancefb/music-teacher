@@ -102,7 +102,7 @@ export default function NoteTrainer({ selectedMidiInput }: NoteTrainerProps) {
         if (input) {
             currentMidiInput.current = input;
             const newListener = (e: any) => {
-                const noteName = e.note.name + e.note.octave;
+                const noteName = e.note.identifier;
                 handleMidiInput(noteName);
             };
             input.addListener('noteon', newListener);

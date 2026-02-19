@@ -14,7 +14,7 @@ import { PracticeKeyboard } from './practice-keyboard';
 type PracticeMode = 'inactive' | 'playback' | 'waitForMe';
 
 const osmdNoteToToneNote = (osmdNote: Note): string | null => {
-  if (osmdNote.isRest() || !osmdNote?.halfTone) return null;
+  if (osmdNote.isRest() || osmdNote.halfTone === undefined) return null;
   const midiNumber = osmdNote.halfTone + 12;
   return Tone.Frequency(midiNumber, 'midi').toNote();
 };
@@ -32,14 +32,38 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
   const [waitNote, setWaitNote] = React.useState<string | null>(null);
   const [bpm, setBpm] = React.useState(50);
   const [playbackNotes, setPlaybackNotes] = React.useState<string[]>([]);
+  const [staffFilter, setStaffFilter] = React.useState<'both' | 'treble' | 'bass'>('both');
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const scoreRef = React.useRef<ScoreDisplayHandle>(null);
   const synthRef = React.useRef<Tone.PolySynth | null>(null);
+  const staffFilterRef = React.useRef<'both' | 'treble' | 'bass'>('both');
+
+  // Keep ref in sync so transport callbacks always see the current value
+  React.useEffect(() => { staffFilterRef.current = staffFilter; }, [staffFilter]);
 
   const highlightedNotesRef = React.useRef<GraphicalNote[]>([]);
 
   const { toast } = useToast();
+
+  const scrollToCursor = React.useCallback(() => {
+    const cursor = scoreRef.current?.cursor;
+    const container = scoreRef.current?.container;
+    if (!cursor?.cursorElement || !container) return;
+    const cursorRect = cursor.cursorElement.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const cursorRelativeLeft = cursorRect.left - containerRect.left + container.scrollLeft;
+    const targetScrollLeft = cursorRelativeLeft - container.clientWidth / 2 + cursorRect.width / 2;
+    container.scrollLeft = Math.max(0, targetScrollLeft);
+  }, []);
+
+  const isStaffAllowed = React.useCallback((staffIndex: number) => {
+    const f = staffFilterRef.current;
+    if (f === 'both') return true;
+    if (f === 'treble') return staffIndex === 0;
+    if (f === 'bass') return staffIndex === 1;
+    return true;
+  }, []);
 
   const highlightCursorNotes = React.useCallback(() => {
     const cursor = scoreRef.current?.cursor;
@@ -56,19 +80,28 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
     try {
       const gNotes = cursor.GNotesUnderCursor();
       for (const gNote of gNotes) {
+        try {
+          const staffIndex = gNote.parentVoiceEntry.parentVoiceEntry.ParentSourceStaffEntry.ParentStaff.idInMusicSheet;
+          if (!isStaffAllowed(staffIndex)) continue;
+        } catch { /* non-standard note, include it */ }
         gNote.setColor('#3b82f6', { applyToNoteheads: true, applyToStem: true, applyToBeams: true });
         highlightedNotesRef.current.push(gNote);
       }
       const notes = cursor.NotesUnderCursor();
       for (const note of notes) {
         if (!note.isRest()) {
+          try {
+            const staffIndex = note.ParentVoiceEntry.ParentSourceStaffEntry.ParentStaff.idInMusicSheet;
+            if (!isStaffAllowed(staffIndex)) continue;
+          } catch {}
           const toneNote = osmdNoteToToneNote(note);
           if (toneNote) keyboardNotes.push(toneNote);
         }
       }
     } catch {}
     setPlaybackNotes(keyboardNotes);
-  }, []);
+    scrollToCursor();
+  }, [isStaffAllowed, scrollToCursor]);
 
   const clearHighlights = React.useCallback(() => {
     for (const gNote of highlightedNotesRef.current) {
@@ -136,14 +169,19 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
         return;
       }
 
-      const notes = cursor.NotesUnderCursor();
-      if (notes.length > 0 && !notes[0].isRest()) {
+      const notes = cursor.NotesUnderCursor().filter(n => {
+        if (n.isRest()) return false;
+        try {
+          return isStaffAllowed(n.ParentVoiceEntry.ParentSourceStaffEntry.ParentStaff.idInMusicSheet);
+        } catch { return true; }
+      });
+      if (notes.length > 0) {
         setWaitNote(osmdNoteToToneNote(notes[0]));
       } else {
         onNextNote();
       }
     }
-  }, [practiceMode, endMeasure, stopPractice, toast, highlightCursorNotes]);
+  }, [practiceMode, endMeasure, stopPractice, toast, highlightCursorNotes, isStaffAllowed]);
 
   const startPlaybackMode = React.useCallback(async () => {
     const osmd = scoreRef.current?.osmd;
@@ -169,6 +207,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
     const firstNoteTime = cursor.iterator.currentTimeStamp.RealValue;
     const tempIterator = cursor.iterator.clone();
     const secPerQuarter = 60 / bpm;
+    let isFirstPosition = true;
 
     while (!tempIterator.endReached && tempIterator.CurrentMeasureIndex < endMeasure) {
       const voiceEntries = tempIterator.CurrentVoiceEntries;
@@ -176,13 +215,22 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
       const relativeTimeInQuarters = (timeInWholeNotes - firstNoteTime) * 4;
       const timeInSeconds = relativeTimeInQuarters * secPerQuarter;
 
-      transport.schedule(() => {
-        cursor.next();
-        highlightCursorNotes();
-      }, timeInSeconds);
+      // Skip cursor advance for the first position — cursor is already there.
+      // From position 1 onward, advance cursor at the moment that position's audio plays.
+      if (!isFirstPosition) {
+        transport.schedule(() => {
+          cursor.next();
+          highlightCursorNotes();
+        }, timeInSeconds);
+      }
+      isFirstPosition = false;
 
       if (voiceEntries) {
         for (const entry of voiceEntries) {
+          try {
+            const staffIndex = entry.ParentSourceStaffEntry.ParentStaff.idInMusicSheet;
+            if (!isStaffAllowed(staffIndex)) continue;
+          } catch {}
           for (const note of entry.Notes) {
             if (!note.isRest()) {
               const toneNote = osmdNoteToToneNote(note);
@@ -206,7 +254,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
     }, lastTimeInQuarters * secPerQuarter);
 
     transport.start();
-  }, [startMeasure, endMeasure, stopPractice, toast, highlightCursorNotes, bpm]);
+  }, [startMeasure, endMeasure, stopPractice, toast, highlightCursorNotes, bpm, isStaffAllowed]);
 
   const startWaitForMeMode = React.useCallback(async () => {
     const cursor = scoreRef.current?.cursor;
@@ -227,8 +275,13 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
         stopPractice();
         return;
       }
-      const notes = cursor.NotesUnderCursor();
-      if (notes.length > 0 && !notes[0].isRest()) {
+      const notes = cursor.NotesUnderCursor().filter(n => {
+        if (n.isRest()) return false;
+        try {
+          return isStaffAllowed(n.ParentVoiceEntry.ParentSourceStaffEntry.ParentStaff.idInMusicSheet);
+        } catch { return true; }
+      });
+      if (notes.length > 0) {
         highlightCursorNotes();
         setWaitNote(osmdNoteToToneNote(notes[0]));
       } else {
@@ -237,7 +290,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
       }
     };
     findFirstNote();
-  }, [startMeasure, endMeasure, stopPractice, highlightCursorNotes]);
+  }, [startMeasure, endMeasure, stopPractice, highlightCursorNotes, isStaffAllowed]);
 
   return (
     <Card className="w-full">
@@ -301,7 +354,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
                   <p className="text-sm text-[hsl(var(--muted-foreground))]">Total: {totalMeasures} measures</p>
                 </div>
                 <Separator />
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <Label htmlFor="bpm">Tempo</Label>
                   <input
                     id="bpm"
@@ -314,6 +367,22 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
                     className="w-40 accent-[hsl(var(--primary))]"
                   />
                   <span className="text-sm font-medium w-16">{bpm} BPM</span>
+                  <div className="flex items-center gap-2 ml-4">
+                    <Label>Staff</Label>
+                    <div className="flex gap-1">
+                      {(['treble', 'both', 'bass'] as const).map((f) => (
+                        <Button
+                          key={f}
+                          size="sm"
+                          variant={staffFilter === f ? 'default' : 'outline'}
+                          disabled={practiceMode !== 'inactive'}
+                          onClick={() => setStaffFilter(f)}
+                        >
+                          {f.charAt(0).toUpperCase() + f.slice(1)}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <Separator />
                 <div className="flex flex-wrap items-center gap-4">
