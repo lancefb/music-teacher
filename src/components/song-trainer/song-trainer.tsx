@@ -2,7 +2,7 @@ import * as React from 'react';
 import * as Tone from 'tone';
 import { OpenSheetMusicDisplay as OSMD, Note, type GraphicalNote } from 'opensheetmusicdisplay';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Library, Upload, Play, Square, Mic2 } from 'lucide-react';
+import { Library, Upload, Play, Square, Mic2, Music } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { ScoreDisplay, type ScoreDisplayHandle } from './score-display';
@@ -133,6 +133,11 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
       scoreRef.current.cursor.hide();
     }
   }, [clearHighlights]);
+
+  const handleLoadSample = React.useCallback(() => {
+    stopPractice();
+    setMusicXml('/samples/The_Entertainer.mxl');
+  }, [stopPractice]);
 
   const handleFileChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -299,8 +304,12 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
           <Library className="w-6 h-6" />
           <span>Song Trainer</span>
         </CardTitle>
-        <div className="flex items-center gap-4">
-          <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".xml,.musicxml" />
+        <div className="flex items-center gap-2">
+          <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".xml,.musicxml,.mxl" />
+          <Button variant="outline" onClick={handleLoadSample}>
+            <Music className="w-4 h-4 mr-2" />
+            Load Sample
+          </Button>
           <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
             <Upload className="w-4 h-4 mr-2" />
             {musicXml ? 'Change Song' : 'Upload Song'}
@@ -313,9 +322,15 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
             <Upload className="w-12 h-12 mx-auto text-[hsl(var(--muted-foreground))]" />
             <div className="space-y-2">
               <p className="text-lg font-semibold">No song loaded</p>
-              <p className="text-[hsl(var(--muted-foreground))]">Upload a MusicXML file to start practicing.</p>
+              <p className="text-[hsl(var(--muted-foreground))]">Try the built-in sample or upload your own MusicXML file.</p>
             </div>
-            <Button onClick={() => fileInputRef.current?.click()}>Select File</Button>
+            <div className="flex justify-center gap-3">
+              <Button onClick={handleLoadSample}>
+                <Music className="w-4 h-4 mr-2" />
+                The Entertainer (Sample)
+              </Button>
+              <Button variant="outline" onClick={() => fileInputRef.current?.click()}>Select File</Button>
+            </div>
           </div>
         ) : (
           <div className="space-y-6">
