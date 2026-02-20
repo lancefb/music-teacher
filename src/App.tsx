@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { WebMidi } from 'webmidi';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Music, Ear, Library } from 'lucide-react';
+import { Music, Ear, Library, Headphones } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Toaster } from '@/components/ui/toaster';
 import NoteTrainer from '@/components/note-trainer/note-trainer';
 import IntervalTrainer from '@/components/interval-trainer/interval-trainer';
 import SongTrainer from '@/components/song-trainer/song-trainer';
+import EarTrainer from '@/components/ear-trainer/ear-trainer';
 
 type MidiStatus = 'pending' | 'enabled' | 'disabled' | 'error';
 
@@ -112,7 +113,7 @@ export default function App() {
           </header>
 
           <Tabs defaultValue="note-trainer" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="note-trainer">
                 <Music className="w-4 h-4 mr-2" />
                 Note Trainer
@@ -124,6 +125,10 @@ export default function App() {
               <TabsTrigger value="song-trainer">
                 <Library className="w-4 h-4 mr-2" />
                 Song Trainer
+              </TabsTrigger>
+              <TabsTrigger value="ear-trainer">
+                <Headphones className="w-4 h-4 mr-2" />
+                Ear Trainer
               </TabsTrigger>
             </TabsList>
             <TabsContent value="note-trainer" className="mt-4">
@@ -137,6 +142,11 @@ export default function App() {
             <TabsContent value="song-trainer" className="mt-4">
               {midiStatus === 'enabled' ? (
                   <SongTrainer selectedMidiInput={selectedMidiInput} />
+              ) : renderMidiConnect()}
+            </TabsContent>
+            <TabsContent value="ear-trainer" className="mt-4">
+              {midiStatus === 'enabled' ? (
+                <EarTrainer selectedMidiInput={selectedMidiInput} />
               ) : renderMidiConnect()}
             </TabsContent>
           </Tabs>

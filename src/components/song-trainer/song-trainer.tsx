@@ -1,6 +1,7 @@
 import * as React from 'react';
 import * as Tone from 'tone';
 import { OpenSheetMusicDisplay as OSMD, Note, type GraphicalNote } from 'opensheetmusicdisplay';
+import { getPianoSampler } from '@/lib/piano-sampler';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Library, Upload, Play, Square, Mic2, Music } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -36,7 +37,7 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const scoreRef = React.useRef<ScoreDisplayHandle>(null);
-  const synthRef = React.useRef<Tone.PolySynth | null>(null);
+  const synthRef = React.useRef<Tone.Sampler | null>(null);
   const staffFilterRef = React.useRef<'both' | 'treble' | 'bass'>('both');
 
   // Keep ref in sync so transport callbacks always see the current value
@@ -111,11 +112,11 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
   }, []);
 
   React.useEffect(() => {
-    synthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
+    getPianoSampler().then(s => { synthRef.current = s; });
     return () => {
       Tone.getTransport().stop();
       Tone.getTransport().cancel();
-      synthRef.current?.dispose();
+      // Sampler is a shared singleton — do not dispose here
     };
   }, []);
 
@@ -191,7 +192,10 @@ export default function SongTrainer({ selectedMidiInput }: SongTrainerProps) {
   const startPlaybackMode = React.useCallback(async () => {
     const osmd = scoreRef.current?.osmd;
     const cursor = scoreRef.current?.cursor;
-    if (!osmd?.Sheet || !cursor || !synthRef.current) return;
+    if (!osmd?.Sheet || !cursor) return;
+    if (!synthRef.current) {
+      synthRef.current = await getPianoSampler();
+    }
 
     stopPractice();
     await Tone.start();

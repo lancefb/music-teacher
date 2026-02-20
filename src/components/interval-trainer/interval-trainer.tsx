@@ -1,6 +1,7 @@
 import * as React from 'react';
 import * as Tone from 'tone';
 import { generateInterval, type GenerateIntervalOutput } from '@/flows/generate-interval-flow';
+import { getPianoSampler } from '@/lib/piano-sampler';
 import { StaffDisplay } from '@/components/shared/staff-display';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,31 +13,28 @@ export default function IntervalTrainer() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [feedback, setFeedback] = React.useState<'correct' | 'incorrect' | null>(null);
   const [selectedAnswer, setSelectedAnswer] = React.useState<string | null>(null);
-  const [isSynthReady, setIsSynthReady] = React.useState(false);
-  const synth = React.useRef<Tone.PolySynth | null>(null);
+  const [isSamplerReady, setIsSamplerReady] = React.useState(false);
+  const sampler = React.useRef<Tone.Sampler | null>(null);
   const { toast } = useToast();
 
   React.useEffect(() => {
-    const initializeSynth = async () => {
-      try {
-        await Tone.start();
-        if (!synth.current) {
-          synth.current = new Tone.PolySynth(Tone.Synth).toDestination();
-        }
-        setIsSynthReady(true);
-        console.log('Audio ready.');
-      } catch (error) {
+    let cancelled = false;
+    getPianoSampler().then(s => {
+      if (!cancelled) {
+        sampler.current = s;
+        setIsSamplerReady(true);
+      }
+    }).catch(() => {
+      if (!cancelled) {
         toast({
           title: 'Audio Error',
           description: 'Could not initialize audio context.',
           variant: 'destructive',
         });
       }
-    };
-    if (typeof window !== 'undefined' && !isSynthReady) {
-      initializeSynth();
-    }
-  }, [toast, isSynthReady]);
+    });
+    return () => { cancelled = true; };
+  }, [toast]);
 
   const loadNewProblem = React.useCallback(async (currentProblem?: GenerateIntervalOutput | null) => {
     setIsLoading(true);
@@ -62,11 +60,11 @@ export default function IntervalTrainer() {
   }, []);
 
   const playInterval = React.useCallback(() => {
-    if (isSynthReady && synth.current && problem) {
-      synth.current.triggerAttackRelease(problem.baseNote, '8n', Tone.now());
-      synth.current.triggerAttackRelease(problem.upperNote, '8n', Tone.now() + Tone.Time('8n').toSeconds());
+    if (isSamplerReady && sampler.current && problem) {
+      sampler.current.triggerAttackRelease(problem.baseNote, '8n', Tone.now());
+      sampler.current.triggerAttackRelease(problem.upperNote, '8n', Tone.now() + Tone.Time('8n').toSeconds());
     }
-  }, [isSynthReady, problem]);
+  }, [isSamplerReady, problem]);
 
   const handleAnswer = (answer: string) => {
     if (feedback) return;
@@ -99,12 +97,12 @@ export default function IntervalTrainer() {
       <CardContent className="space-y-6">
         <StaffDisplay
           notes={problem ? [problem.baseNote, problem.upperNote] : []}
-          disabled={isLoading || !isSynthReady}
+          disabled={isLoading || !isSamplerReady}
           title="Identify the Interval"
         />
 
         <div className="flex items-center justify-center gap-4">
-          <Button onClick={playInterval} disabled={isLoading || !isSynthReady}>
+          <Button onClick={playInterval} disabled={isLoading || !isSamplerReady}>
             Play Interval
           </Button>
           <Button onClick={() => loadNewProblem(problem)} disabled={isLoading}>
@@ -118,7 +116,7 @@ export default function IntervalTrainer() {
               key={answer}
               onClick={() => handleAnswer(answer)}
               variant={getButtonVariant(answer)}
-              disabled={isLoading || feedback !== null}
+              disabled={isLoading || !isSamplerReady || feedback !== null}
               className="h-12 text-sm"
             >
               {answer}

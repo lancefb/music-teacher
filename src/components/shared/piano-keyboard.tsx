@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as Tone from 'tone';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { getPianoSampler } from '@/lib/piano-sampler';
 
 interface PianoKeyboardProps {
   highlightedNotes?: string[];
@@ -18,32 +19,32 @@ export function PianoKeyboard({
   correctNote,
   incorrectNote,
 }: PianoKeyboardProps) {
-  const synth = React.useRef<Tone.PolySynth | null>(null);
-  const [isSynthReady, setIsSynthReady] = React.useState(false);
+  const sampler = React.useRef<Tone.Sampler | null>(null);
+  const [isSamplerReady, setIsSamplerReady] = React.useState(false);
   const { toast } = useToast();
 
   React.useEffect(() => {
-    const initializeSynth = async () => {
-      try {
-        await Tone.start();
-        synth.current = new Tone.PolySynth(Tone.Synth).toDestination();
-        setIsSynthReady(true);
-      } catch (error) {
+    let cancelled = false;
+    getPianoSampler().then(s => {
+      if (!cancelled) {
+        sampler.current = s;
+        setIsSamplerReady(true);
+      }
+    }).catch(() => {
+      if (!cancelled) {
         toast({
           title: 'Audio Error',
           description: 'Could not initialize audio for keyboard.',
           variant: 'destructive',
         });
       }
-    };
-    if (typeof window !== 'undefined' && !isSynthReady) {
-      initializeSynth();
-    }
-  }, [toast, isSynthReady]);
+    });
+    return () => { cancelled = true; };
+  }, [toast]);
 
   const playNote = (note: string) => {
-    if (isSynthReady && synth.current) {
-      synth.current.triggerAttackRelease(note, '8n');
+    if (isSamplerReady && sampler.current) {
+      sampler.current.triggerAttackRelease(note, '8n');
     }
   };
 

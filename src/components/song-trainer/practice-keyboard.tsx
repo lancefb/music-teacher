@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as Tone from 'tone';
 import { WebMidi } from 'webmidi';
 import { PianoKeyboard } from '@/components/shared/piano-keyboard';
+import { getPianoSampler } from '@/lib/piano-sampler';
 
 interface PracticeKeyboardProps {
   selectedMidiInput: string | null;
@@ -14,16 +15,15 @@ interface PracticeKeyboardProps {
 export function PracticeKeyboard({ selectedMidiInput, onNextNote, correctNote, isWaiting, playbackNotes = [] }: PracticeKeyboardProps) {
   const [activeNotes, setActiveNotes] = React.useState<string[]>([]);
   const [incorrectNote, setIncorrectNote] = React.useState<string | null>(null);
-  const synth = React.useRef<Tone.PolySynth | null>(null);
+  const sampler = React.useRef<Tone.Sampler | null>(null);
 
   React.useEffect(() => {
-    synth.current = new Tone.PolySynth(Tone.Synth).toDestination();
-    return () => { synth.current?.dispose(); };
+    getPianoSampler().then(s => { sampler.current = s; });
   }, []);
 
   const handleNoteOn = React.useCallback((e: any) => {
     const noteName = e.note.identifier;
-    synth.current?.triggerAttack(noteName, Tone.now());
+    sampler.current?.triggerAttack(noteName, Tone.now());
     setActiveNotes(prev => Array.from(new Set([...prev, noteName])));
 
     if (isWaiting && correctNote) {
@@ -41,7 +41,7 @@ export function PracticeKeyboard({ selectedMidiInput, onNextNote, correctNote, i
 
   const handleNoteOff = React.useCallback((e: any) => {
     const noteName = e.note.identifier;
-    synth.current?.triggerRelease(noteName, Tone.now());
+    sampler.current?.triggerRelease(noteName, Tone.now());
     setActiveNotes(prev => prev.filter(n => n !== noteName));
   }, []);
 
