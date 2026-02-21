@@ -1,5 +1,7 @@
 # AI-Accelerated Musician
 
+![AI-Accelerated Musician](musicteacher.webp)
+
 A piano practice app with four training modes:
 
 - **Note Trainer** — Sight-reading drill. A note appears on the staff, you play it on your MIDI keyboard. Toggle between treble clef, bass clef, or auto-switching mode.
