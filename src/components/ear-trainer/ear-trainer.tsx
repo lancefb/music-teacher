@@ -6,8 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PianoKeyboard } from '@/components/shared/piano-keyboard';
 import { getPianoSampler } from '@/lib/piano-sampler';
-import { generateMelody, type MusicalKey, type GenerateMelodyOutput, type EarTrainerStats } from '@/flows/generate-melody-flow';
-import { Ear, Play, RotateCcw, Eye, ArrowRight } from 'lucide-react';
+import { generateMelody, midiToNoteName, KEY_ROOT_SEMITONE, type MusicalKey, type GenerateMelodyOutput, type EarTrainerStats } from '@/flows/generate-melody-flow';
+import { Ear, Play, RotateCcw, Eye, ArrowRight, Music2 } from 'lucide-react';
+
+// Major arpeggio intervals: root, major 3rd, perfect 5th, octave
+const ARPEGGIO_OFFSETS = [0, 4, 7, 12];
+const ARPEGGIO_SPACING = 0.5;
+
+function getArpeggio(key: MusicalKey): string[] {
+  const rootMidi = 60 + KEY_ROOT_SEMITONE[key];
+  return ARPEGGIO_OFFSETS.map(offset => midiToNoteName(rootMidi + offset));
+}
 
 type PracticeState = 'idle' | 'playing' | 'listening' | 'revealed';
 
@@ -125,6 +134,16 @@ export default function EarTrainer({ selectedMidiInput }: EarTrainerProps) {
     setUserNotes([]);
     setPracticeState('idle');
   }, []);
+
+  const playReference = React.useCallback(async () => {
+    if (!sampler.current) return;
+    await Tone.start();
+    const notes = getArpeggio(selectedKey);
+    const now = Tone.now() + 0.05;
+    notes.forEach((note, i) => {
+      sampler.current!.triggerAttackRelease(note, NOTE_DURATION, now + i * ARPEGGIO_SPACING);
+    });
+  }, [selectedKey]);
 
   // Compute highlighted notes for keyboard
   // listening: user's played notes in blue
@@ -274,6 +293,18 @@ export default function EarTrainer({ selectedMidiInput }: EarTrainerProps) {
 
         {/* Controls */}
         <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button
+            onClick={playReference}
+            disabled={practiceState === 'playing'}
+            variant="outline"
+            className="min-w-[110px]"
+          >
+            <Music2 className="w-4 h-4 mr-2" />
+            Reference
+          </Button>
+
+          <div className="w-px h-8 bg-[hsl(var(--border))]" />
+
           <Button
             onClick={playMelody}
             disabled={practiceState === 'playing' || practiceState !== 'idle' || !melody}

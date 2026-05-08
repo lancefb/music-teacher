@@ -24,7 +24,7 @@ export interface EarTrainerStats {
 const MAJOR_SCALE_OFFSETS = new Set([0, 2, 4, 5, 7, 9, 11]);
 
 // Semitone of each key's root, relative to C
-const KEY_ROOT_SEMITONE: Record<MusicalKey, number> = {
+export const KEY_ROOT_SEMITONE: Record<MusicalKey, number> = {
   'C':   0,
   'Db':  1,
   'D':   2,
@@ -41,7 +41,7 @@ const KEY_ROOT_SEMITONE: Record<MusicalKey, number> = {
 // Flat-first names to match sample filenames
 const NOTE_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 
-function midiToNoteName(midi: number): string {
+export function midiToNoteName(midi: number): string {
   const octave = Math.floor(midi / 12) - 1;
   return `${NOTE_NAMES[midi % 12]}${octave}`;
 }
